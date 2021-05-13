@@ -7,7 +7,9 @@ using System.Net.Http;
 using System.Net.Http.Json;
 using System.Net.Http.Headers;
 using Newtonsoft.Json;
-
+using System.IO;
+using System.Linq;
+using System.Drawing;
 
 namespace Apz_device
 {
@@ -15,9 +17,9 @@ namespace Apz_device
     {
         private const string API_URL = "https://localhost:5001/";
         private const int MINUTE = 60_000;
-        private static LoginUser userToLogin { get; set; }
-        private static OasMedication[] medications { get; set; }
-        private static ResponseToken token { get; set; }
+        private static string AnimalType { get; set; } = "Cat";
+        private static OasMedication[] Medications { get; set; }
+        private static ResponseToken Token { get; set; }
 
         static async Task Main(string[] args)
         {
@@ -40,14 +42,8 @@ namespace Apz_device
                 if (loginResult.IsSuccessStatusCode)
                 {
                     isLoggedIn = true;
-                    token = loginResult.Content.ReadAsAsync<ResponseToken>().Result;
-
-                    HttpResponseMessage medicationsResult = await client.GetAsync(API_URL + "medications");
-                    medications = medicationsResult.Content.ReadAsAsync<OasMedication[]>().Result;
-                    foreach (OasMedication medication in medications)
-                    {
-                        Console.WriteLine(medication.MedicineName);
-                    }
+                    Token = loginResult.Content.ReadAsAsync<ResponseToken>().Result;
+                    Console.WriteLine("Вхід до системи ");
                 }
                 else
                 {
@@ -56,17 +52,66 @@ namespace Apz_device
 
             } while (!isLoggedIn);
 
-            int userId = token.UserId;
+            int userId = Token.UserId;
 
             GC.Collect();
 
             #endregion SETUP
 
             #region LOOP
-            //Timer timer = new Timer(isUserWorking, null, 0, MINUTE);
+            Timer timer = new Timer(isMedicationNeeded, null, 0, MINUTE);
 
             Console.ReadLine();
             #endregion LOOP
+        }
+
+        private async static void isMedicationNeeded(Object state)
+        {
+            using var client = new HttpClient();
+
+            HttpResponseMessage medicationsResult = await client.GetAsync(API_URL + "Medications");
+            Medications = medicationsResult.Content.ReadAsAsync<OasMedication[]>().Result;
+
+            try
+            {
+                foreach (OasMedication medication in Medications)
+                {
+                    if (medication.MedicationTime == DateTime.Now.ToString("HH:mm"))
+                    {
+                        try
+                        {
+                            var extensions = new string[] { ".png", ".jpg" };
+                            var dir = new DirectoryInfo("./test-data");
+                            var rgFiles = dir.GetFiles("*.*").Where(f => extensions.Contains(f.Extension.ToLower()));
+                            Random R = new Random();
+                            Image image = Image.FromFile(rgFiles.ElementAt(R.Next(0, rgFiles.Count())).FullName);
+
+
+                            HttpContent content = new ByteArrayContent(image.ToByteArray());
+                            content.Headers.ContentType = MediaTypeHeaderValue.Parse("application/octet-stream");
+                            var getDistanceResult = await client.PostAsync(API_URL + $"iot/detectDistance/{AnimalType}", content);
+
+                            bool isAnimalAvailable = getDistanceResult.Content.ReadAsAsync<bool>().Result;
+                            if (isAnimalAvailable)
+                            {
+                                Console.WriteLine($"Видати тварині {AnimalType} медикамент {medication.MedicineName} у виді {medication.MedicationType} мірою в {medication.MedicationAmount}, час: {medication.MedicationTime}");
+                            }
+                            else
+                            {
+                                Console.WriteLine("Тварина не виявлена або дистанція до неї надто велика...");
+                            }
+                        }
+                        catch (Exception)
+                        {
+                            Console.WriteLine("Помилка: не вдалося перевірити присутність тварини...");
+                        }
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                Console.WriteLine("Помилка при отриманні тестових даних...");
+            }
         }
 
         public static string ReadPassword()
@@ -103,9 +148,9 @@ namespace Apz_device
             return password;
         }
 
-        private static async Task<HttpResponseMessage> LoginUser(LoginUser userToLogin, HttpClient client)
+        private static async Task<HttpResponseMessage> LoginUser(LoginUser UserToLogin, HttpClient client)
         {
-            var json = JsonConvert.SerializeObject(userToLogin);
+            var json = JsonConvert.SerializeObject(UserToLogin);
             var userData = new StringContent(json, Encoding.UTF8, "application/json");
 
             var loginResult = await client.PostAsync(API_URL + "auth/login", userData);
@@ -119,12 +164,24 @@ namespace Apz_device
             Console.Write("\nПароль: ");
             string password = ReadPassword();
 
-            LoginUser userToLogin = new LoginUser
+            LoginUser UserToLogin = new LoginUser
             {
                 Email = email,
                 Password = password
             };
-            return userToLogin;
+            return UserToLogin;
+        }
+    }
+
+    public static class ImageConverter
+    {
+        public static byte[] ToByteArray(this Image image)
+        {
+            using (var ms = new MemoryStream())
+            {
+                image.Save(ms, image.RawFormat);
+                return ms.ToArray();
+            }
         }
     }
 }
