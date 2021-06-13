@@ -69,7 +69,7 @@ namespace Apz_device
         {
             using var client = new HttpClient();
 
-            HttpResponseMessage medicationsResult = await client.GetAsync(API_URL + "Medications");
+            HttpResponseMessage medicationsResult = await client.GetAsync(API_URL + "medications/" + Token.UserId);
             Medications = medicationsResult.Content.ReadAsAsync<OasMedication[]>().Result;
 
             try
@@ -81,7 +81,7 @@ namespace Apz_device
                         try
                         {
                             var extensions = new string[] { ".png", ".jpg" };
-                            var dir = new DirectoryInfo("./test-data");
+                            var dir = new DirectoryInfo(@"C:\Repos\Apz-device\test-data");
                             var rgFiles = dir.GetFiles("*.*").Where(f => extensions.Contains(f.Extension.ToLower()));
                             Random R = new Random();
                             Image image = Image.FromFile(rgFiles.ElementAt(R.Next(0, rgFiles.Count())).FullName);
@@ -94,7 +94,8 @@ namespace Apz_device
                             bool isAnimalAvailable = getDistanceResult.Content.ReadAsAsync<bool>().Result;
                             if (isAnimalAvailable)
                             {
-                                Console.WriteLine($"Видати тварині {AnimalType} медикамент {medication.MedicineName} у виді {medication.MedicationType} мірою в {medication.MedicationAmount}, час: {medication.MedicationTime}");
+                                Console.WriteLine($"Видати тварині {AnimalType} медикамент {medication.MedicineName} у виді {medication.MedicationType} мірою {medication.MedicationAmount}, час: {medication.MedicationTime}");
+                                Console.Beep(800, 1000);
                             }
                             else
                             {
@@ -129,21 +130,15 @@ namespace Apz_device
                 {
                     if (!string.IsNullOrEmpty(password))
                     {
-                        // remove one character from the list of password characters
                         password = password.Substring(0, password.Length - 1);
-                        // get the location of the cursor
                         int pos = Console.CursorLeft;
-                        // move the cursor to the left by one character
                         Console.SetCursorPosition(pos - 1, Console.CursorTop);
-                        // replace it with space
                         Console.Write(" ");
-                        // move the cursor to the left by one character again
                         Console.SetCursorPosition(pos - 1, Console.CursorTop);
                     }
                 }
                 info = Console.ReadKey(true);
             }
-            // add a new line because user pressed enter at the end of their password
             Console.WriteLine();
             return password;
         }
